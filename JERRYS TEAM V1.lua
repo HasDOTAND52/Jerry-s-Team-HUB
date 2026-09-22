@@ -2,56 +2,28 @@
 	FlyToggle.lua  —  LocalScript
 	Ubicación: StarterPlayer > StarterPlayerScripts
 
-	F  = activar / desactivar el vuelo (o el botón VUELO del panel)
+	F  = activar / desactivar el vuelo
 	H  = mostrar / ocultar el panel "Jerry's Script V.1" (o el botón de
 	     la lechuga girando en medio de la pantalla; se puede arrastrar,
 	     pensado para móvil)
-	Botón "NOCLIP"      = atravesar paredes/suelo
-	Botón "GMABER1090"  = el personaje gira sin parar (con medidor)
-	Botón "FULLBRIGHT"  = quita la oscuridad del mapa (al apagarlo se
-	                      restaura la iluminación original)
-	Módulo "AIMBOT" (tercera columna) = al activarlo, la cámara apunta
-	                      sola (sin pulsar nada) al jugador más cercano
-	                      al centro del círculo verde. Opciones: WALL CHECK, TEAM CHECK,
-	                      tamaño del círculo y parte a la que apuntar
-	                      (cabeza, torso, brazos o piernas).
-	Módulo "ESP" (tercera columna, abajo) = ves a los demás jugadores a
-	                      través de las paredes: silueta resaltada con
-	                      su nombre y la distancia. Modos: TODOS, o solo
-	                      los del OTRO TEAM.
-	Módulo "FLING A JUGADOR" = escribes el nombre (o parte del nombre /
-	                      apodo) de UN jugador y pulsas LANZAR (o Enter):
-	                      te teletransportas a él, lo lanzas por los
-	                      aires y vuelves a tu posición original (y
-	                      recuperas el vuelo si lo tenías).
-	Cartel "Self Destruct" = elimina TODO, con una explosión de lechugas 🥬
 	Arrastra la BARRA VERDE de arriba para mover el panel.
-
 	W A S D = moverse en la dirección de la cámara (mientras vuelas)
 	Espacio = subir      Shift = bajar
 
 	----------------------------------------------------------------
-	CAMBIOS DE ESTA VERSIÓN
+	INTERFAZ (estilo "Old Roblox": plana, verde y blanca, bordes negros)
 
-	0) NUEVO: AIMBOT con Wall Check, Team Check, tamaño del círculo y
-	   selector de parte (cabeza / torso / brazos / piernas). El panel
-	   pasa a tres columnas (835 px de ancho).
+	El panel ahora es pequeño (340 x 348) y está ordenado en 4 PESTAÑAS.
+	Cada script tiene su propia tarjeta con su NOMBRE y una línea que
+	explica qué hace:
 
-	1) Panel más ancho, en DOS COLUMNAS, y con todo más compacto: ahora
-	   cabe todo sin salirse de la pantalla.
+	  MOVER   -> VUELO, NOCLIP
+	  VISUAL  -> ESP, FULLBRIGHT
+	  COMBATE -> AIMBOT (Wall Check, Team Check, círculo, parte)
+	  EXTRA   -> FLING A JUGADOR, GMABER1090 (giro)
 
-	2) Se ha quitado el FLING antiguo (el de cercanía). Solo queda
-	   "FLING A JUGADOR", que ahora incluye el medidor de fuerza.
-
-	3) El lanzamiento sale MUCHO antes:
-	   - Empieza en el mismo instante en que pulsas LANZAR (antes
-	     esperaba al siguiente Heartbeat).
-	   - El empujón se aplica dos veces por frame (antes de la física
-	     y después), en vez de una.
-	   - Termina en cuanto el objetivo sale despedido (se detecta por
-	     distancia recorrida), sin esperar a que se acabe el tiempo.
-	   - El tiempo máximo baja de 0.8 s a 0.6 s.
-	   - Se quitó la vibración (jitter) que solo añadía retraso.
+	Cartel rojo "Self Destruct" (arriba a la derecha) = elimina TODO,
+	con una explosión de lechugas 🥬
 	----------------------------------------------------------------
 
 	Sobre el logo (la lechuga con gafas): sube tu imagen como Decal
@@ -85,9 +57,12 @@ local velocidadGiro = 180   -- giro: valor inicial
 local FUERZA_MIN = 2000        -- fling: más suave
 local FUERZA_MAX = 60000       -- fling: más fuerte
 local fuerzaFling = 30000      -- fling: valor inicial
-local DURACION_DIRIGIDO = 0.6  -- fling: tiempo MÁXIMO pegado al objetivo (s)
+local DURACION_DIRIGIDO = 1.5  -- fling: tiempo MÁXIMO pegado al objetivo (s); corta antes si sale
 local DIST_LANZADO = 50        -- fling: si el objetivo se aleja tanto (studs), se da por lanzado
-local GIRO_FLING_MAX = 150     -- fling: tope de velocidad angular (rad/s)
+local VEL_LANZADO = 250        -- fling: ...o si su velocidad supera esto (studs/s)
+local ANTICIPACION = 0.12      -- fling: cuánto "adelantas" a un objetivo que se mueve (s)
+local TIEMPO_REGRESO = 0.6     -- fling: máximo para volver a tu sitio y frenarte (s)
+local DIST_REGRESO = 6         -- fling: a menos de esto (studs) de tu sitio se da por vuelto
 
 -- Pega aquí el rbxassetid de tu imagen de la lechuga una vez la subas:
 local LOGO_ASSET_ID = "rbxassetid://100928947883496"
@@ -116,7 +91,7 @@ local VERDE_OSCURO = Color3.fromRGB(0, 120, 46)
 local VERDE_SUAVE = Color3.fromRGB(235, 248, 238)
 local BLANCO = Color3.fromRGB(255, 255, 255)
 local GRIS_TEXTO = Color3.fromRGB(60, 60, 60)
-local GRIS_TENUE = Color3.fromRGB(140, 150, 140)
+local GRIS_TENUE = Color3.fromRGB(120, 135, 120)
 local NEGRO_BORDE = Color3.fromRGB(20, 20, 20)
 local VERDE_BARRA = Color3.fromRGB(0, 158, 61)
 local GRIS_TRACK = Color3.fromRGB(210, 210, 210)
@@ -124,15 +99,116 @@ local GRIS_TRACK = Color3.fromRGB(210, 210, 210)
 local FUENTE = Enum.Font.SourceSansBold
 
 --------------------------------------------------------------------
--- INTERFAZ
+-- INTERFAZ — piezas reutilizables
 --------------------------------------------------------------------
 
--- Medidas del panel (tres columnas)
-local ANCHO_PANEL = 835
-local ALTO_PANEL = 430
-local ANCHO_COL = 265
-local X_COL1 = 10
-local X_COL2 = 285
+-- Medidas del panel (pequeño, con pestañas)
+local ANCHO_PANEL = 340
+local ALTO_PANEL = 348
+local Y_PAGINAS = 72        -- donde empiezan las páginas (bajo las pestañas)
+local ALTO_PIE = 22         -- espacio del pie
+
+-- Borde "biselado" clásico: una línea clara arriba y una sombra abajo.
+local function biselar(objeto)
+	local luz = Instance.new("Frame")
+	luz.Name = "Luz"
+	luz.Size = UDim2.new(1, 0, 0, 2)
+	luz.BackgroundColor3 = BLANCO
+	luz.BackgroundTransparency = 0.55
+	luz.BorderSizePixel = 0
+	luz.Parent = objeto
+
+	local sombra = Instance.new("Frame")
+	sombra.Name = "Sombra"
+	sombra.AnchorPoint = Vector2.new(0, 1)
+	sombra.Position = UDim2.new(0, 0, 1, 0)
+	sombra.Size = UDim2.new(1, 0, 0, 2)
+	sombra.BackgroundColor3 = Color3.new(0, 0, 0)
+	sombra.BackgroundTransparency = 0.82
+	sombra.BorderSizePixel = 0
+	sombra.Parent = objeto
+end
+
+-- Degradado vertical suave (solo para Frames sin texto propio).
+local function degradado(marco, oscuro)
+	local g = Instance.new("UIGradient")
+	g.Rotation = 90
+	g.Color = ColorSequence.new(BLANCO, Color3.fromRGB(oscuro, oscuro, oscuro))
+	g.Parent = marco
+end
+
+-- Botón estándar del panel (blanco, borde negro, biselado).
+local function crearBoton(padre, nombre, texto, posicion, tamano, tamanoTexto)
+	local b = Instance.new("TextButton")
+	b.Name = nombre
+	b.Position = posicion
+	b.Size = tamano
+	b.BackgroundColor3 = BLANCO
+	b.BorderSizePixel = 2
+	b.BorderColor3 = NEGRO_BORDE
+	b.AutoButtonColor = false
+	b.Selectable = false
+	b.Font = FUENTE
+	b.TextSize = tamanoTexto or 13
+	b.TextColor3 = GRIS_TEXTO
+	b.Text = texto
+	b.Parent = padre
+	biselar(b)
+	return b
+end
+
+-- Pinta un botón como "encendido" (verde) o "apagado" (blanco).
+local function pintarBoton(boton, activo, texto)
+	boton.Text = texto
+	boton.BackgroundColor3 = activo and VERDE_HEADER or BLANCO
+	boton.TextColor3 = activo and BLANCO or GRIS_TEXTO
+end
+
+-- Posiciones para dos botones lado a lado dentro de una tarjeta.
+local function mitadIzq(y) return UDim2.new(0, 8, 0, y) end
+local function mitadDer(y) return UDim2.new(0.5, 4, 0, y) end
+local function tamMitad(alto) return UDim2.new(0.5, -12, 0, alto) end
+local function tamCompleto(alto) return UDim2.new(1, -16, 0, alto) end
+
+-- Insignia "Old Roblox" para el logo y el botón flotante: marco negro grueso,
+-- anillo verde con 4 remaches blancos en las esquinas y una placa blanca en
+-- el centro. Es simétrica, así que se ve bien mientras gira.
+-- Devuelve la placa: ahí dentro va la imagen.
+local function insigniaOldRoblox(base)
+	base.BackgroundColor3 = VERDE_HEADER
+	base.BorderSizePixel = 3
+	base.BorderColor3 = NEGRO_BORDE
+	local z = base.ZIndex
+
+	local placa = Instance.new("Frame")
+	placa.Name = "Placa"
+	placa.AnchorPoint = Vector2.new(0.5, 0.5)
+	placa.Position = UDim2.new(0.5, 0, 0.5, 0)
+	placa.Size = UDim2.new(1, -10, 1, -10)
+	placa.BackgroundColor3 = BLANCO
+	placa.BorderSizePixel = 2
+	placa.BorderColor3 = NEGRO_BORDE
+	placa.ZIndex = z + 1
+	placa.Parent = base
+
+	for _, esquina in ipairs({ Vector2.new(0, 0), Vector2.new(1, 0), Vector2.new(0, 1), Vector2.new(1, 1) }) do
+		local remache = Instance.new("Frame")
+		remache.Name = "Remache"
+		remache.AnchorPoint = Vector2.new(0.5, 0.5)
+		remache.Position = UDim2.new(esquina.X, esquina.X == 0 and 3 or -3, esquina.Y, esquina.Y == 0 and 3 or -3)
+		remache.Size = UDim2.fromOffset(3, 3)
+		remache.BackgroundColor3 = BLANCO
+		remache.BorderSizePixel = 0
+		remache.ZIndex = z + 1
+		remache.Parent = base
+	end
+
+	return placa
+end
+
+--------------------------------------------------------------------
+-- INTERFAZ — panel, cabecera, pestañas
+--------------------------------------------------------------------
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "JerryScriptGui"
@@ -168,11 +244,12 @@ escala.Parent = panel
 -- ===== Barra de título =====
 local header = Instance.new("Frame")
 header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 42)
+header.Size = UDim2.new(1, 0, 0, 36)
 header.Position = UDim2.new(0, 0, 0, 0)
 header.BackgroundColor3 = VERDE_HEADER
 header.BorderSizePixel = 0
 header.Parent = panel
+degradado(header, 200)
 
 local headerLineaInferior = Instance.new("Frame")
 headerLineaInferior.Size = UDim2.new(1, 0, 0, 3)
@@ -184,8 +261,8 @@ headerLineaInferior.Parent = header
 -- ===== Logo =====
 local logoMarco = Instance.new("Frame")
 logoMarco.Name = "LogoMarco"
-logoMarco.Size = UDim2.new(0, 48, 0, 48)
-logoMarco.Position = UDim2.new(0, -9, 0, -9)
+logoMarco.Size = UDim2.new(0, 44, 0, 44)
+logoMarco.Position = UDim2.new(0, -8, 0, -8)
 logoMarco.BackgroundColor3 = BLANCO
 logoMarco.BorderSizePixel = 3
 logoMarco.BorderColor3 = NEGRO_BORDE
@@ -227,13 +304,15 @@ end)
 
 -- ===== Texto de la cabecera =====
 local nombreHub = Instance.new("TextLabel")
-nombreHub.Size = UDim2.new(0, 160, 1, 0)
+nombreHub.Size = UDim2.new(0, 150, 1, -3)
 nombreHub.Position = UDim2.new(0, 44, 0, 0)
 nombreHub.BackgroundTransparency = 1
 nombreHub.Font = FUENTE
 nombreHub.TextSize = 17
 nombreHub.TextXAlignment = Enum.TextXAlignment.Left
 nombreHub.TextColor3 = BLANCO
+nombreHub.TextStrokeTransparency = 0.6
+nombreHub.TextStrokeColor3 = VERDE_OSCURO
 nombreHub.Text = "Jerry's Script V.1"
 nombreHub.Parent = header
 
@@ -243,7 +322,7 @@ local ROJO_HOVER = Color3.fromRGB(235, 70, 70)
 
 local botonDestruir = Instance.new("TextButton")
 botonDestruir.Name = "BotonSelfDestruct"
-botonDestruir.Size = UDim2.new(0, 78, 0, 22)
+botonDestruir.Size = UDim2.new(0, 84, 0, 20)
 botonDestruir.AnchorPoint = Vector2.new(1, 0.5)
 botonDestruir.Position = UDim2.new(1, -8, 0.5, -1)
 botonDestruir.BackgroundColor3 = ROJO_CARTEL
@@ -255,6 +334,7 @@ botonDestruir.TextSize = 12
 botonDestruir.TextColor3 = BLANCO
 botonDestruir.Text = "Self Destruct"
 botonDestruir.Parent = header
+biselar(botonDestruir)
 
 botonDestruir.MouseEnter:Connect(function()
 	botonDestruir.BackgroundColor3 = ROJO_HOVER
@@ -311,43 +391,115 @@ conectar(UserInputService.InputEnded, function(input)
 end)
 
 --------------------------------------------------------------------
+-- PESTAÑAS Y PÁGINAS
+--------------------------------------------------------------------
+
+local ORDEN_TABS = { "MOVER", "VISUAL", "COMBATE", "EXTRA" }
+local paginas = {}
+local botonesTab = {}
+
+local barraTabs = Instance.new("Frame")
+barraTabs.Name = "BarraTabs"
+barraTabs.Position = UDim2.new(0, 8, 0, 42)
+barraTabs.Size = UDim2.new(1, -16, 0, 24)
+barraTabs.BackgroundTransparency = 1
+barraTabs.Parent = panel
+
+local listaTabs = Instance.new("UIListLayout")
+listaTabs.FillDirection = Enum.FillDirection.Horizontal
+listaTabs.SortOrder = Enum.SortOrder.LayoutOrder
+listaTabs.Padding = UDim.new(0, 2)
+listaTabs.Parent = barraTabs
+
+local zonaPaginas = Instance.new("Frame")
+zonaPaginas.Name = "ZonaPaginas"
+zonaPaginas.Position = UDim2.new(0, 0, 0, Y_PAGINAS)
+zonaPaginas.Size = UDim2.new(1, 0, 1, -(Y_PAGINAS + ALTO_PIE))
+zonaPaginas.BackgroundTransparency = 1
+zonaPaginas.Parent = panel
+
+local function mostrarPagina(nombre)
+	for n, pagina in pairs(paginas) do
+		pagina.Visible = (n == nombre)
+	end
+	for n, boton in pairs(botonesTab) do
+		local activa = (n == nombre)
+		boton.BackgroundColor3 = activa and VERDE_HEADER or BLANCO
+		boton.TextColor3 = activa and BLANCO or GRIS_TEXTO
+	end
+end
+
+for i, nombre in ipairs(ORDEN_TABS) do
+	local pagina = Instance.new("Frame")
+	pagina.Name = "Pagina" .. nombre
+	pagina.Size = UDim2.new(1, 0, 1, 0)
+	pagina.BackgroundTransparency = 1
+	pagina.Visible = false
+	pagina.Parent = zonaPaginas
+	paginas[nombre] = pagina
+
+	local boton = crearBoton(barraTabs, "Tab" .. nombre, nombre, UDim2.new(), UDim2.new(0, 79, 1, 0), 13)
+	boton.LayoutOrder = i
+	botonesTab[nombre] = boton
+	boton.MouseButton1Click:Connect(function()
+		mostrarPagina(nombre)
+	end)
+end
+
+--------------------------------------------------------------------
 -- Tarjetas y medidores
 --------------------------------------------------------------------
 
-local function crearTarjeta(nombre, posX, posY, alto)
+-- Tarjeta con su NOMBRE (barra verde) y una línea que dice qué hace.
+local function crearTarjeta(pagina, nombre, descripcion, posY, alto)
 	local tarjeta = Instance.new("Frame")
 	tarjeta.Name = "Tarjeta" .. nombre
-	tarjeta.Size = UDim2.new(0, ANCHO_COL, 0, alto)
-	tarjeta.Position = UDim2.new(0, posX, 0, posY)
+	tarjeta.Size = UDim2.new(1, -20, 0, alto)
+	tarjeta.Position = UDim2.new(0, 10, 0, posY)
 	tarjeta.BackgroundColor3 = VERDE_SUAVE
 	tarjeta.BorderSizePixel = 2
 	tarjeta.BorderColor3 = NEGRO_BORDE
-	tarjeta.Parent = panel
+	tarjeta.Parent = pagina
 
 	local miniHeader = Instance.new("Frame")
 	miniHeader.Name = "MiniHeader"
-	miniHeader.Size = UDim2.new(1, 0, 0, 20)
+	miniHeader.Size = UDim2.new(1, 0, 0, 18)
 	miniHeader.BackgroundColor3 = VERDE_OSCURO
 	miniHeader.BorderSizePixel = 0
 	miniHeader.Parent = tarjeta
+	degradado(miniHeader, 190)
 
 	local miniTexto = Instance.new("TextLabel")
 	miniTexto.Size = UDim2.new(1, -10, 1, 0)
 	miniTexto.Position = UDim2.new(0, 8, 0, 0)
 	miniTexto.BackgroundTransparency = 1
 	miniTexto.Font = FUENTE
-	miniTexto.TextSize = 12
+	miniTexto.TextSize = 13
 	miniTexto.TextXAlignment = Enum.TextXAlignment.Left
 	miniTexto.TextColor3 = BLANCO
 	miniTexto.Text = nombre
 	miniTexto.Parent = miniHeader
 
+	local textoDesc = Instance.new("TextLabel")
+	textoDesc.Name = "Descripcion"
+	textoDesc.Size = UDim2.new(1, -16, 0, 12)
+	textoDesc.Position = UDim2.new(0, 8, 0, 20)
+	textoDesc.BackgroundTransparency = 1
+	textoDesc.Font = FUENTE
+	textoDesc.TextSize = 11
+	textoDesc.TextXAlignment = Enum.TextXAlignment.Left
+	textoDesc.TextTruncate = Enum.TextTruncate.AtEnd
+	textoDesc.TextColor3 = GRIS_TENUE
+	textoDesc.Text = descripcion
+	textoDesc.Parent = tarjeta
+
 	return tarjeta
 end
 
+-- Medidor (barra deslizante). Ocupa 44 px de alto desde posY.
 local function crearMedidor(tarjeta, posY, minimo, maximo, inicial, alCambiar, textos)
 	local etiquetaVel = Instance.new("TextLabel")
-	etiquetaVel.Size = UDim2.new(1, -80, 0, 16)
+	etiquetaVel.Size = UDim2.new(1, -80, 0, 14)
 	etiquetaVel.Position = UDim2.new(0, 8, 0, posY)
 	etiquetaVel.BackgroundTransparency = 1
 	etiquetaVel.Font = FUENTE
@@ -358,7 +510,7 @@ local function crearMedidor(tarjeta, posY, minimo, maximo, inicial, alCambiar, t
 	etiquetaVel.Parent = tarjeta
 
 	local valor = Instance.new("TextLabel")
-	valor.Size = UDim2.new(0, 60, 0, 16)
+	valor.Size = UDim2.new(0, 60, 0, 14)
 	valor.Position = UDim2.new(1, -68, 0, posY)
 	valor.BackgroundTransparency = 1
 	valor.Font = FUENTE
@@ -370,7 +522,7 @@ local function crearMedidor(tarjeta, posY, minimo, maximo, inicial, alCambiar, t
 
 	local track = Instance.new("Frame")
 	track.Size = UDim2.new(1, -16, 0, 10)
-	track.Position = UDim2.new(0, 8, 0, posY + 20)
+	track.Position = UDim2.new(0, 8, 0, posY + 18)
 	track.BackgroundColor3 = GRIS_TRACK
 	track.BorderSizePixel = 2
 	track.BorderColor3 = NEGRO_BORDE
@@ -383,7 +535,7 @@ local function crearMedidor(tarjeta, posY, minimo, maximo, inicial, alCambiar, t
 	relleno.Parent = track
 
 	local knob = Instance.new("Frame")
-	knob.Size = UDim2.new(0, 16, 0, 16)
+	knob.Size = UDim2.new(0, 14, 0, 16)
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.Position = UDim2.new(0, 0, 0.5, 0)
 	knob.BackgroundColor3 = BLANCO
@@ -393,8 +545,8 @@ local function crearMedidor(tarjeta, posY, minimo, maximo, inicial, alCambiar, t
 	knob.Parent = track
 
 	local labelIzq = Instance.new("TextLabel")
-	labelIzq.Size = UDim2.new(0, 90, 0, 14)
-	labelIzq.Position = UDim2.new(0, 8, 0, posY + 34)
+	labelIzq.Size = UDim2.new(0, 90, 0, 12)
+	labelIzq.Position = UDim2.new(0, 8, 0, posY + 31)
 	labelIzq.BackgroundTransparency = 1
 	labelIzq.Font = FUENTE
 	labelIzq.TextSize = 10
@@ -404,9 +556,9 @@ local function crearMedidor(tarjeta, posY, minimo, maximo, inicial, alCambiar, t
 	labelIzq.Parent = tarjeta
 
 	local labelDer = Instance.new("TextLabel")
-	labelDer.Size = UDim2.new(0, 90, 0, 14)
+	labelDer.Size = UDim2.new(0, 90, 0, 12)
 	labelDer.AnchorPoint = Vector2.new(1, 0)
-	labelDer.Position = UDim2.new(1, -8, 0, posY + 34)
+	labelDer.Position = UDim2.new(1, -8, 0, posY + 31)
 	labelDer.BackgroundTransparency = 1
 	labelDer.Font = FUENTE
 	labelDer.TextSize = 10
@@ -468,37 +620,21 @@ local function crearMedidor(tarjeta, posY, minimo, maximo, inicial, alCambiar, t
 end
 
 --------------------------------------------------------------------
--- COLUMNA IZQUIERDA: VUELO, NOCLIP, FULLBRIGHT
+-- PESTAÑA MOVER: VUELO y NOCLIP
 --------------------------------------------------------------------
 
 -- Tarjeta VUELO
-local tarjetaVuelo = crearTarjeta("VUELO", X_COL1, 50, 118)
+local tarjetaVuelo = crearTarjeta(paginas.MOVER, "VUELO", "Vuela por el mapa  ·  tecla F", 0, 108)
 
 -- Botón de vuelo: hace lo mismo que la tecla F y muestra el estado
-local subEstado = Instance.new("TextButton")
-subEstado.Name = "BotonVuelo"
-subEstado.Size = UDim2.new(1, -16, 0, 20)
-subEstado.Position = UDim2.new(0, 8, 0, 24)
-subEstado.BackgroundColor3 = BLANCO
-subEstado.BorderSizePixel = 2
-subEstado.BorderColor3 = NEGRO_BORDE
-subEstado.AutoButtonColor = false
-subEstado.Selectable = false
-subEstado.Font = FUENTE
-subEstado.TextSize = 13
-subEstado.TextColor3 = GRIS_TEXTO
-subEstado.Text = "VUELO:  DESACTIVADO  (F)"
-subEstado.Parent = tarjetaVuelo
+local subEstado = crearBoton(tarjetaVuelo, "BotonVuelo", "DESACTIVADO  (F)",
+	UDim2.new(0, 8, 0, 34), tamCompleto(22), 13)
 
 local function actualizarBotonVuelo()
 	if volando then
-		subEstado.Text = "VUELO:  ACTIVADO  (F)"
-		subEstado.BackgroundColor3 = VERDE_HEADER
-		subEstado.TextColor3 = BLANCO
+		pintarBoton(subEstado, true, "ACTIVADO  (F)")
 	else
-		subEstado.Text = "VUELO:  DESACTIVADO  (F)"
-		subEstado.BackgroundColor3 = BLANCO
-		subEstado.TextColor3 = GRIS_TEXTO
+		pintarBoton(subEstado, false, "DESACTIVADO  (F)")
 	end
 end
 
@@ -506,79 +642,38 @@ subEstado.MouseButton1Click:Connect(function()
 	establecerVuelo(not volando)
 end)
 
-local medidorVuelo = crearMedidor(tarjetaVuelo, 46, VEL_MIN, VEL_MAX, velocidad, function(nuevoValor)
+local medidorVuelo = crearMedidor(tarjetaVuelo, 60, VEL_MIN, VEL_MAX, velocidad, function(nuevoValor)
 	velocidad = nuevoValor
 end)
 
 -- Tarjeta NOCLIP
-local tarjetaNoclip = crearTarjeta("NOCLIP", X_COL1, 174, 60)
+local tarjetaNoclip = crearTarjeta(paginas.MOVER, "NOCLIP", "Atraviesa paredes y suelo", 114, 62)
 
-local botonNoclip = Instance.new("TextButton")
-botonNoclip.Name = "BotonNoclip"
-botonNoclip.Size = UDim2.new(1, -16, 0, 26)
-botonNoclip.Position = UDim2.new(0, 8, 0, 26)
-botonNoclip.BackgroundColor3 = BLANCO
-botonNoclip.BorderSizePixel = 2
-botonNoclip.BorderColor3 = NEGRO_BORDE
-botonNoclip.AutoButtonColor = false
-botonNoclip.Font = FUENTE
-botonNoclip.TextSize = 14
-botonNoclip.TextColor3 = GRIS_TEXTO
-botonNoclip.Text = "NOCLIP:  DESACTIVADO"
-botonNoclip.Parent = tarjetaNoclip
+local botonNoclip = crearBoton(tarjetaNoclip, "BotonNoclip", "DESACTIVADO",
+	UDim2.new(0, 8, 0, 34), tamCompleto(22), 13)
+
+--------------------------------------------------------------------
+-- PESTAÑA VISUAL: FULLBRIGHT (el ESP se crea más abajo, en su bloque)
+--------------------------------------------------------------------
 
 -- Tarjeta FULLBRIGHT
-local tarjetaFullbright = crearTarjeta("FULLBRIGHT", X_COL1, 240, 60)
+local tarjetaFullbright = crearTarjeta(paginas.VISUAL, "FULLBRIGHT", "Quita la oscuridad del mapa", 94, 62)
 
-local botonFullbright = Instance.new("TextButton")
-botonFullbright.Name = "BotonFullbright"
-botonFullbright.Size = UDim2.new(1, -16, 0, 26)
-botonFullbright.Position = UDim2.new(0, 8, 0, 26)
-botonFullbright.BackgroundColor3 = BLANCO
-botonFullbright.BorderSizePixel = 2
-botonFullbright.BorderColor3 = NEGRO_BORDE
-botonFullbright.AutoButtonColor = false
-botonFullbright.Font = FUENTE
-botonFullbright.TextSize = 14
-botonFullbright.TextColor3 = GRIS_TEXTO
-botonFullbright.Text = "FULLBRIGHT:  DESACTIVADO"
-botonFullbright.Parent = tarjetaFullbright
+local botonFullbright = crearBoton(tarjetaFullbright, "BotonFullbright", "DESACTIVADO",
+	UDim2.new(0, 8, 0, 34), tamCompleto(22), 13)
 
 --------------------------------------------------------------------
--- COLUMNA DERECHA: GMABER1090 y FLING A JUGADOR
+-- PESTAÑA EXTRA: FLING A JUGADOR y GMABER1090
 --------------------------------------------------------------------
-
--- Tarjeta GMABER1090
-local tarjetaGiro = crearTarjeta("GMABER1090", X_COL2, 50, 110)
-
-local botonGiro = Instance.new("TextButton")
-botonGiro.Name = "BotonGiro"
-botonGiro.Size = UDim2.new(1, -16, 0, 28)
-botonGiro.Position = UDim2.new(0, 8, 0, 26)
-botonGiro.BackgroundColor3 = BLANCO
-botonGiro.BorderSizePixel = 2
-botonGiro.BorderColor3 = NEGRO_BORDE
-botonGiro.AutoButtonColor = false
-botonGiro.Font = FUENTE
-botonGiro.TextSize = 13
-botonGiro.TextColor3 = GRIS_TEXTO
-botonGiro.Text = "GIRO:  DESACTIVADO"
-botonGiro.Parent = tarjetaGiro
-
-local medidorGiro = crearMedidor(tarjetaGiro, 58, GIRO_MIN, GIRO_MAX, velocidadGiro, function(nuevoValor)
-	velocidadGiro = nuevoValor
-	if angularVelocity and angularVelocity.Enabled then
-		angularVelocity.AngularVelocity = Vector3.new(0, math.rad(velocidadGiro), 0)
-	end
-end)
 
 -- Tarjeta FLING A JUGADOR (nombre + botón + medidor de fuerza)
-local tarjetaDirigido = crearTarjeta("FLING A JUGADOR", X_COL2, 166, 134)
+local tarjetaDirigido = crearTarjeta(paginas.EXTRA, "FLING A JUGADOR",
+	"Escribe un nombre y lánzalo por los aires", 0, 126)
 
 local cajaNombre = Instance.new("TextBox")
 cajaNombre.Name = "CajaNombreFling"
-cajaNombre.Size = UDim2.new(1, -110, 0, 26)
-cajaNombre.Position = UDim2.new(0, 8, 0, 26)
+cajaNombre.Size = UDim2.new(1, -114, 0, 24)
+cajaNombre.Position = UDim2.new(0, 8, 0, 34)
 cajaNombre.BackgroundColor3 = BLANCO
 cajaNombre.BorderSizePixel = 2
 cajaNombre.BorderColor3 = NEGRO_BORDE
@@ -596,29 +691,18 @@ local margenCaja = Instance.new("UIPadding")
 margenCaja.PaddingLeft = UDim.new(0, 6)
 margenCaja.Parent = cajaNombre
 
-local botonDirigido = Instance.new("TextButton")
-botonDirigido.Name = "BotonFlingDirigido"
-botonDirigido.Size = UDim2.new(0, 90, 0, 26)
+local botonDirigido = crearBoton(tarjetaDirigido, "BotonFlingDirigido", "LANZAR",
+	UDim2.new(1, -8, 0, 34), UDim2.new(0, 92, 0, 24), 13)
 botonDirigido.AnchorPoint = Vector2.new(1, 0)
-botonDirigido.Position = UDim2.new(1, -8, 0, 26)
-botonDirigido.BackgroundColor3 = BLANCO
-botonDirigido.BorderSizePixel = 2
-botonDirigido.BorderColor3 = NEGRO_BORDE
-botonDirigido.AutoButtonColor = false
-botonDirigido.Font = FUENTE
-botonDirigido.TextSize = 13
-botonDirigido.TextColor3 = GRIS_TEXTO
-botonDirigido.Text = "LANZAR"
-botonDirigido.Parent = tarjetaDirigido
 
-local medidorFling = crearMedidor(tarjetaDirigido, 58, FUERZA_MIN, FUERZA_MAX, fuerzaFling, function(nuevoValor)
+local medidorFling = crearMedidor(tarjetaDirigido, 64, FUERZA_MIN, FUERZA_MAX, fuerzaFling, function(nuevoValor)
 	fuerzaFling = nuevoValor
 end, { titulo = "Fuerza", izq = "Más suave", der = "Más fuerte" })
 
 local estadoDirigido = Instance.new("TextLabel")
 estadoDirigido.Name = "EstadoDirigido"
-estadoDirigido.Size = UDim2.new(1, -16, 0, 14)
-estadoDirigido.Position = UDim2.new(0, 8, 0, 112)
+estadoDirigido.Size = UDim2.new(1, -16, 0, 12)
+estadoDirigido.Position = UDim2.new(0, 8, 0, 110)
 estadoDirigido.BackgroundTransparency = 1
 estadoDirigido.Font = FUENTE
 estadoDirigido.TextSize = 11
@@ -627,6 +711,19 @@ estadoDirigido.TextTruncate = Enum.TextTruncate.AtEnd
 estadoDirigido.TextColor3 = GRIS_TENUE
 estadoDirigido.Text = ""
 estadoDirigido.Parent = tarjetaDirigido
+
+-- Tarjeta GMABER1090 (giro)
+local tarjetaGiro = crearTarjeta(paginas.EXTRA, "GMABER1090", "Tu personaje gira sin parar", 132, 108)
+
+local botonGiro = crearBoton(tarjetaGiro, "BotonGiro", "DESACTIVADO",
+	UDim2.new(0, 8, 0, 34), tamCompleto(22), 13)
+
+local medidorGiro = crearMedidor(tarjetaGiro, 60, GIRO_MIN, GIRO_MAX, velocidadGiro, function(nuevoValor)
+	velocidadGiro = nuevoValor
+	if angularVelocity and angularVelocity.Enabled then
+		angularVelocity.AngularVelocity = Vector3.new(0, math.rad(velocidadGiro), 0)
+	end
+end)
 
 -- Los botones no deben poder "seleccionarse" con el teclado (Espacio
 -- los re-pulsaría mientras vuelas).
@@ -640,7 +737,7 @@ end
 
 local pie = Instance.new("TextLabel")
 pie.Size = UDim2.new(1, -90, 0, 16)
-pie.Position = UDim2.new(0, 10, 1, -22)
+pie.Position = UDim2.new(0, 10, 1, -20)
 pie.BackgroundTransparency = 1
 pie.Font = FUENTE
 pie.TextSize = 10
@@ -653,7 +750,7 @@ local firma = Instance.new("TextLabel")
 firma.Name = "Firma"
 firma.Size = UDim2.new(0, 60, 0, 14)
 firma.AnchorPoint = Vector2.new(1, 1)
-firma.Position = UDim2.new(1, -8, 1, -4)
+firma.Position = UDim2.new(1, -8, 1, -3)
 firma.BackgroundTransparency = 1
 firma.Font = FUENTE
 firma.TextSize = 9
@@ -662,6 +759,9 @@ firma.TextColor3 = GRIS_TENUE
 firma.TextTransparency = 0.15
 firma.Text = "By: Has.&52"
 firma.Parent = panel
+
+-- Pestaña que se ve al abrir
+mostrarPagina("MOVER")
 
 --------------------------------------------------------------------
 -- ANIMACIÓN DE ABRIR / CERRAR
@@ -731,7 +831,7 @@ end
 do
 	local botonLechuga = Instance.new("TextButton")
 	botonLechuga.Name = "BotonLechuga"
-	botonLechuga.Size = UDim2.new(0, 56, 0, 56)
+	botonLechuga.Size = UDim2.new(0, 52, 0, 52)
 	botonLechuga.AnchorPoint = Vector2.new(0.5, 0.5)
 	botonLechuga.Position = UDim2.new(0.5, 0, 0.5, 0)   -- en medio de la pantalla
 	botonLechuga.BackgroundColor3 = BLANCO
@@ -841,15 +941,7 @@ local function aplicarColisiones(character, sinColision)
 end
 
 local function actualizarBotonNoclip()
-	if noclipActivo then
-		botonNoclip.Text = "NOCLIP:  ACTIVADO"
-		botonNoclip.BackgroundColor3 = VERDE_HEADER
-		botonNoclip.TextColor3 = BLANCO
-	else
-		botonNoclip.Text = "NOCLIP:  DESACTIVADO"
-		botonNoclip.BackgroundColor3 = BLANCO
-		botonNoclip.TextColor3 = GRIS_TEXTO
-	end
+	pintarBoton(botonNoclip, noclipActivo, noclipActivo and "ACTIVADO" or "DESACTIVADO")
 end
 
 local function establecerNoclip(estado)
@@ -890,15 +982,7 @@ end)
 local giroActivo = false
 
 local function actualizarBotonGiro()
-	if giroActivo then
-		botonGiro.Text = "GIRO:  ACTIVADO"
-		botonGiro.BackgroundColor3 = VERDE_HEADER
-		botonGiro.TextColor3 = BLANCO
-	else
-		botonGiro.Text = "GIRO:  DESACTIVADO"
-		botonGiro.BackgroundColor3 = BLANCO
-		botonGiro.TextColor3 = GRIS_TEXTO
-	end
+	pintarBoton(botonGiro, giroActivo, giroActivo and "ACTIVADO" or "DESACTIVADO")
 end
 
 local function establecerGiro(estado)
@@ -934,15 +1018,7 @@ local luzOriginal = nil
 local efectosApagados = {}
 
 local function actualizarBotonFullbright()
-	if fullbrightActivo then
-		botonFullbright.Text = "FULLBRIGHT:  ACTIVADO"
-		botonFullbright.BackgroundColor3 = VERDE_HEADER
-		botonFullbright.TextColor3 = BLANCO
-	else
-		botonFullbright.Text = "FULLBRIGHT:  DESACTIVADO"
-		botonFullbright.BackgroundColor3 = BLANCO
-		botonFullbright.TextColor3 = GRIS_TEXTO
-	end
+	pintarBoton(botonFullbright, fullbrightActivo, fullbrightActivo and "ACTIVADO" or "DESACTIVADO")
 end
 
 local function establecerFullbright(estado)
@@ -1018,17 +1094,38 @@ end)
 -- FLING A UN JUGADOR (por nombre)
 --------------------------------------------------------------------
 --[[
-	Flujo (todo pensado para que salga lo antes posible):
+	POR QUÉ LA VERSIÓN ANTERIOR CASI NO FUNCIONABA, Y QUÉ SE CAMBIÓ:
 
-	  1) Pulsas LANZAR (o Enter en la caja): el enganche ocurre en ESE
-	     mismo instante, sin esperar al siguiente frame.
-	  2) Cada frame te pegas al objetivo y le aplicas el empujón dos
-	     veces: en Stepped (antes de la física) y en Heartbeat
-	     (después). En RenderStepped se restaura tu velocidad real
-	     para que nunca quede un pico colgado.
-	  3) En cuanto el objetivo se ha alejado DIST_LANZADO studs, o se
-	     acaba DURACION_DIRIGIDO, termina: vuelves a tu posición y
-	     recuperas el vuelo si lo tenías.
+	1) El empujón se aplicaba TAMBIÉN en Stepped, que es ANTES de la
+	   física. Tu propio cuerpo salía disparado cientos de studs en
+	   cada paso de simulación y se desenganchaba del objetivo. Ahora
+	   el empujón solo se aplica en Heartbeat (DESPUÉS de la física,
+	   que es lo que se replica al resto de jugadores) y en
+	   RenderStepped (antes de la física) se restaura tu velocidad
+	   real, así tu cuerpo se comporta con normalidad en tu pantalla.
+
+	2) La ráfaga duraba como máximo 0,6 s. Con algo de ping, el
+	   objetivo ni había recibido tu contacto todavía. Ahora dura hasta
+	   DURACION_DIRIGIDO (1,5 s), pero CORTA EN CUANTO el objetivo sale
+	   despedido (se aleja DIST_LANZADO studs o supera VEL_LANZADO).
+
+	3) Te teletransportabas a donde el objetivo ESTABA. Si caminaba,
+	   fallabas. Ahora te adelantas según su velocidad (ANTICIPACION).
+
+	4) Contactaba siempre con la misma zona. Ahora cambia de pose cada
+	   frame (encima, debajo y a los lados) con el cuerpo girando, para
+	   que alguna parte de tu personaje siempre toque la suya.
+
+	5) Volver era un solo teletransporte. Ahora hay una FASE DE REGRESO:
+	   te devuelve a tu sitio y frena TODAS las partes de tu personaje
+	   hasta que estás quieto y en tu posición original. Después
+	   recupera el vuelo si lo tenías.
+
+	6) La cámara giraba contigo. Durante la ráfaga se queda mirando al
+	   objetivo, y al terminar vuelve a ti.
+
+	Se mantiene: el pico SOLO se aplica mientras estás enganchado, tu
+	velocidad real se guarda UNA vez, y el vuelo se apaga mientras dura.
 
 	El nombre se busca sin distinguir mayúsculas: nombre de usuario o
 	DisplayName, completo o parcial. Prioridad: exacto > empieza por >
@@ -1043,10 +1140,25 @@ local volabaAntesDeFling = false
 local dirigidoActivo = false    -- hay un lanzamiento en curso
 local jugadorDirigido = nil     -- el Player al que apunta
 local objetivoFling = nil       -- HumanoidRootPart del objetivo mientras estás pegado
+local faseFling = nil           -- nil | "ataque" | "regreso"
 local inicioRafaga = 0
 local finRafaga = 0
+local finRegreso = 0
+local framesRegreso = 0
+local mensajeFinal = "Listo"
+local pasoFling = 0
+local dirEmpuje = Vector3.zero
 local posInicioObjetivo = Vector3.zero
 local posAntesRafaga = nil      -- dónde estabas antes de pegarte
+local camaraSobreObjetivo = false
+
+-- Posiciones (relativas al objetivo) por las que va rotando tu cuerpo
+local POSES_FLING = {
+	Vector3.new(0, 1.5, 0),
+	Vector3.new(0, -1.5, 0),
+	Vector3.new(2.25, 1.5, -2.25),
+	Vector3.new(-2.25, -1.5, 2.25),
+}
 
 local function mostrarEstadoDirigido(texto, esError)
 	estadoDirigido.Text = texto
@@ -1055,13 +1167,9 @@ end
 
 local function actualizarBotonDirigido()
 	if dirigidoActivo then
-		botonDirigido.Text = "LANZANDO..."
-		botonDirigido.BackgroundColor3 = VERDE_HEADER
-		botonDirigido.TextColor3 = BLANCO
+		pintarBoton(botonDirigido, true, "LANZANDO...")
 	else
-		botonDirigido.Text = "LANZAR"
-		botonDirigido.BackgroundColor3 = BLANCO
-		botonDirigido.TextColor3 = GRIS_TEXTO
+		pintarBoton(botonDirigido, false, "LANZAR")
 	end
 end
 
@@ -1074,19 +1182,40 @@ local function restaurarPico()
 	picoPendiente = false
 end
 
--- Termina la ráfaga: te devuelve a tu sitio, restaura velocidades y
--- recupera el vuelo si lo tenías encendido antes.
+-- Deja quietas TODAS las partes de tu personaje (velocidad lineal y angular a 0)
+local function frenarPersonaje()
+	if not personajeActual or not personajeActual.Parent then return end
+	for _, parte in ipairs(personajeActual:GetDescendants()) do
+		if parte:IsA("BasePart") then
+			parte.AssemblyLinearVelocity = Vector3.zero
+			parte.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+-- La cámara vuelve a seguirte a ti
+local function restaurarCamara()
+	if not camaraSobreObjetivo then return end
+	camaraSobreObjetivo = false
+	local camara = workspace.CurrentCamera
+	if camara and humanoid and humanoid.Parent then
+		pcall(function()
+			camara.CameraSubject = humanoid
+		end)
+	end
+end
+
+-- Termina todo: te devuelve a tu sitio, frena tu personaje, restaura la
+-- cámara y recupera el vuelo si lo tenías encendido antes.
 local function terminarRafaga()
-	if objetivoFling and posAntesRafaga and personajeActual and personajeActual.Parent then
+	if posAntesRafaga and personajeActual and personajeActual.Parent then
 		personajeActual:PivotTo(posAntesRafaga)
 	end
 	objetivoFling = nil
+	faseFling = nil
 	posAntesRafaga = nil
-
-	if root and root.Parent then
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
-	end
+	restaurarCamara()
+	frenarPersonaje()
 	velGuardada = Vector3.zero
 	angGuardada = Vector3.zero
 	picoPendiente = false
@@ -1135,6 +1264,7 @@ end
 local function finalizarFlingDirigido(mensaje, esError)
 	dirigidoActivo = false
 	jugadorDirigido = nil
+	faseFling = nil
 	actualizarBotonDirigido()
 	if mensaje then
 		mostrarEstadoDirigido(mensaje, esError)
@@ -1143,7 +1273,8 @@ end
 
 cancelarFlingDirigido = function()
 	if not dirigidoActivo then return end
-	terminarRafaga()
+	dirigidoActivo = false      -- primero: así el vuelo restaurado no vuelve a llamar aquí
+	terminarRafaga()            -- te devuelve a tu sitio y recupera vuelo/cámara
 	finalizarFlingDirigido("Cancelado", false)
 end
 
@@ -1155,7 +1286,7 @@ local function engancharAhora()
 		return false
 	end
 
-	-- Guardamos tu velocidad real UNA sola vez, antes de tocar nada.
+	-- Tu velocidad y posición reales se guardan UNA sola vez, antes de tocar nada.
 	velGuardada = root.AssemblyLinearVelocity
 	angGuardada = root.AssemblyAngularVelocity
 	posAntesRafaga = root.CFrame
@@ -1165,27 +1296,56 @@ local function engancharAhora()
 		establecerVuelo(false)
 	end
 
+	-- Dirección del empujón: desde donde estabas hacia el objetivo (en plano).
+	local hacia = Vector3.new(
+		raizObj.Position.X - posAntesRafaga.Position.X, 0,
+		raizObj.Position.Z - posAntesRafaga.Position.Z
+	)
+	if hacia.Magnitude > 0.5 then
+		dirEmpuje = hacia.Unit
+	else
+		local mira = root.CFrame.LookVector
+		local plano = Vector3.new(mira.X, 0, mira.Z)
+		dirEmpuje = plano.Magnitude > 0.01 and plano.Unit or Vector3.new(0, 0, -1)
+	end
+
+	-- La cámara se queda mirando al objetivo mientras dura la ráfaga
+	local humObjetivo = raizObj.Parent and raizObj.Parent:FindFirstChildOfClass("Humanoid")
+	local camara = workspace.CurrentCamera
+	if humObjetivo and camara then
+		camaraSobreObjetivo = pcall(function()
+			camara.CameraSubject = humObjetivo
+		end)
+	end
+
 	objetivoFling = raizObj
+	faseFling = "ataque"
 	posInicioObjetivo = raizObj.Position
+	pasoFling = 0
 	inicioRafaga = os.clock()
 	finRafaga = inicioRafaga + DURACION_DIRIGIDO
 	return true
 end
 
--- Te pega al objetivo y aplica el empujón (se llama en Stepped y en Heartbeat)
+-- Te pega al objetivo (adelantándote a su movimiento) y aplica el empujón.
 local function aplicarPico()
 	if not objetivoFling or not objetivoFling.Parent or not root or not root.Parent or not personajeActual then
 		return
 	end
 
-	personajeActual:PivotTo(CFrame.new(objetivoFling.Position) * (root.CFrame - root.CFrame.Position))
+	pasoFling += 1
+	local pose = POSES_FLING[(pasoFling - 1) % #POSES_FLING + 1]
 
-	local mira = root.CFrame.LookVector
-	local plano = Vector3.new(mira.X, 0, mira.Z)
-	local dir = plano.Magnitude > 0.01 and plano.Unit or Vector3.new(0, 0, -1)
+	local vel = objetivoFling.AssemblyLinearVelocity
+	local adelante = Vector3.new(vel.X, 0, vel.Z) * ANTICIPACION
 
-	root.AssemblyLinearVelocity = dir * fuerzaFling + Vector3.new(0, fuerzaFling, 0)
-	root.AssemblyAngularVelocity = Vector3.new(GIRO_FLING_MAX, GIRO_FLING_MAX, GIRO_FLING_MAX)
+	personajeActual:PivotTo(
+		CFrame.new(objetivoFling.Position + adelante + pose) * CFrame.Angles(math.rad(pasoFling * 100), 0, 0)
+	)
+
+	local giro = fuerzaFling / 20
+	root.AssemblyLinearVelocity = dirEmpuje * fuerzaFling + Vector3.new(0, fuerzaFling, 0)
+	root.AssemblyAngularVelocity = Vector3.new(giro, giro, giro)
 	picoPendiente = true
 end
 
@@ -1213,7 +1373,7 @@ local function iniciarFlingDirigido()
 	actualizarBotonDirigido()
 	mostrarEstadoDirigido("Lanzando a " .. objetivo.Name .. "...", false)
 
-	-- Enganche y primer empujón INMEDIATOS (sin esperar al siguiente frame)
+	-- Enganche INMEDIATO (sin esperar al siguiente frame)
 	if engancharAhora() then
 		aplicarPico()
 	end
@@ -1240,44 +1400,77 @@ cajaNombre.FocusLost:Connect(function(enterPresionado)
 	end
 end)
 
--- Heartbeat (después de la física): segundo empujón del frame y control del final.
+-- Heartbeat (DESPUÉS de la física): aquí se aplica el empujón y se controla el final.
 conectar(RunService.Heartbeat, function()
 	if not dirigidoActivo or not root or not root.Parent or not personajeActual then return end
 
+	local ahora = os.clock()
+
+	-- ===== Fase de regreso: volver a tu sitio y quedarte quieto =====
+	if faseFling == "regreso" then
+		if posAntesRafaga then
+			personajeActual:PivotTo(posAntesRafaga)
+			frenarPersonaje()
+			if (root.Position - posAntesRafaga.Position).Magnitude < DIST_REGRESO then
+				framesRegreso += 1
+			end
+		end
+		if framesRegreso >= 3 or ahora >= finRegreso or not posAntesRafaga then
+			terminarRafaga()
+			finalizarFlingDirigido(mensajeFinal, false)
+		end
+		return
+	end
+
+	-- ===== Fase de ataque =====
 	if not objetivoFling then
 		-- Por si el enganche inmediato no llegó a producirse
 		if not engancharAhora() then return end
 	end
 
-	local ahora = os.clock()
-	local lanzado = (ahora - inicioRafaga) > 0.08
-		and objetivoFling.Parent
-		and (objetivoFling.Position - posInicioObjetivo).Magnitude >= DIST_LANZADO
+	local objetivoVivo = objetivoFling.Parent ~= nil
+	local lanzado = false
+	if objetivoVivo and (ahora - inicioRafaga) > 0.08 then
+		lanzado = (objetivoFling.Position - posInicioObjetivo).Magnitude >= DIST_LANZADO
+			or objetivoFling.AssemblyLinearVelocity.Magnitude >= VEL_LANZADO
+	end
 
-	if ahora >= finRafaga or not objetivoFling.Parent or lanzado then
-		terminarRafaga()
-		finalizarFlingDirigido(lanzado and "Listo: lanzado" or "Listo", false)
+	if lanzado or not objetivoVivo or ahora >= finRafaga then
+		if lanzado then
+			mensajeFinal = "Listo: lanzado"
+		elseif objetivoVivo then
+			mensajeFinal = "No salió: repite o sube la fuerza"
+		else
+			mensajeFinal = "Listo"
+		end
+
+		-- Pasamos a la fase de regreso YA, en este mismo frame: así no se
+		-- replica ni un frame más de empujón.
+		objetivoFling = nil
+		picoPendiente = false
+		faseFling = "regreso"
+		framesRegreso = 0
+		finRegreso = ahora + TIEMPO_REGRESO
+		restaurarCamara()
+		if posAntesRafaga then
+			personajeActual:PivotTo(posAntesRafaga)
+		end
+		frenarPersonaje()
 		return
 	end
 
 	aplicarPico()
 end)
 
--- RenderStepped (antes de simular): se restaura tu velocidad real.
+-- RenderStepped (ANTES de simular): se restaura tu velocidad real, para que
+-- tu cuerpo no salga disparado en tu propia pantalla. (Ya no hay ningún
+-- empujón en Stepped: ese era el fallo principal.)
 conectar(RunService.RenderStepped, function()
 	restaurarPico()
 end)
 
--- Stepped (justo antes de la física): primer empujón del frame, para
--- que la simulación ya arranque con el contacto y la velocidad puestos.
-conectar(RunService.Stepped, function()
-	if dirigidoActivo and objetivoFling then
-		aplicarPico()
-	end
-end)
-
 --------------------------------------------------------------------
--- AIMBOT — tarjeta en la tercera columna + lógica de apuntado
+-- AIMBOT — tarjeta en la pestaña COMBATE + lógica de apuntado
 --------------------------------------------------------------------
 --[[
 	Se activa con el botón AIMBOT del panel y desde ese momento APUNTA
@@ -1302,7 +1495,6 @@ do
 	local RADIO_AIM_MIN = 40
 	local RADIO_AIM_MAX = 400
 	local SUAVIZADO_AIM = 1
-	local X_COL3 = 560
 
 	local radioAimbot = 150
 	local aimbotActivo = false
@@ -1319,37 +1511,23 @@ do
 	}
 
 	-- ===== Interfaz =====
-	local tarjetaAimbot = crearTarjeta("AIMBOT", X_COL3, 50, 250)
+	local tarjetaAimbot = crearTarjeta(paginas.COMBATE, "AIMBOT",
+		"La cámara apunta sola al jugador del círculo", 0, 204)
 
-	local function crearBotonAim(nombre, texto, ancho, x, y, alto)
-		local b = Instance.new("TextButton")
-		b.Name = nombre
-		b.Size = UDim2.new(0, ancho, 0, alto)
-		b.Position = UDim2.new(0, x, 0, y)
-		b.BackgroundColor3 = BLANCO
-		b.BorderSizePixel = 2
-		b.BorderColor3 = NEGRO_BORDE
-		b.AutoButtonColor = false
-		b.Font = FUENTE
-		b.TextSize = 13
-		b.TextColor3 = GRIS_TEXTO
-		b.Text = texto
-		b.Selectable = false
-		b.Parent = tarjetaAimbot
-		return b
-	end
-
-	local botonAimbot = crearBotonAim("BotonAimbot", "AIMBOT:  DESACTIVADO", 249, 8, 26, 26)
-	local botonWallCheck = crearBotonAim("BotonWallCheck", "WALL CHECK: SÍ", 121, 8, 58, 24)
-	local botonTeamCheck = crearBotonAim("BotonTeamCheck", "TEAM CHECK: SÍ", 121, 136, 58, 24)
+	local botonAimbot = crearBoton(tarjetaAimbot, "BotonAimbot", "DESACTIVADO",
+		UDim2.new(0, 8, 0, 34), tamCompleto(22), 13)
+	local botonWallCheck = crearBoton(tarjetaAimbot, "BotonWallCheck", "WALL CHECK: SÍ",
+		mitadIzq(60), tamMitad(22), 12)
+	local botonTeamCheck = crearBoton(tarjetaAimbot, "BotonTeamCheck", "TEAM CHECK: SÍ",
+		mitadDer(60), tamMitad(22), 12)
 
 	crearMedidor(tarjetaAimbot, 88, RADIO_AIM_MIN, RADIO_AIM_MAX, radioAimbot, function(nuevoValor)
 		radioAimbot = nuevoValor
 	end, { titulo = "Tamaño del círculo", izq = "Pequeño", der = "Grande" })
 
 	local etiquetaParte = Instance.new("TextLabel")
-	etiquetaParte.Size = UDim2.new(1, -16, 0, 14)
-	etiquetaParte.Position = UDim2.new(0, 8, 0, 144)
+	etiquetaParte.Size = UDim2.new(1, -16, 0, 12)
+	etiquetaParte.Position = UDim2.new(0, 8, 0, 136)
 	etiquetaParte.BackgroundTransparency = 1
 	etiquetaParte.Font = FUENTE
 	etiquetaParte.TextSize = 12
@@ -1360,23 +1538,10 @@ do
 
 	local botonesParte = {}
 	for i, nombre in ipairs(ORDEN_PARTES) do
-		local x = (i % 2 == 1) and 8 or 136
-		local y = (i <= 2) and 160 or 188
-		botonesParte[nombre] = crearBotonAim("BotonParte" .. nombre, nombre, 121, x, y, 24)
+		local y = (i <= 2) and 150 or 176
+		local pos = (i % 2 == 1) and mitadIzq(y) or mitadDer(y)
+		botonesParte[nombre] = crearBoton(tarjetaAimbot, "BotonParte" .. nombre, nombre, pos, tamMitad(22), 12)
 	end
-
-	local pista = Instance.new("TextLabel")
-	pista.Size = UDim2.new(1, -16, 0, 28)
-	pista.Position = UDim2.new(0, 8, 0, 220)
-	pista.BackgroundTransparency = 1
-	pista.Font = FUENTE
-	pista.TextSize = 11
-	pista.TextWrapped = true
-	pista.TextXAlignment = Enum.TextXAlignment.Left
-	pista.TextYAlignment = Enum.TextYAlignment.Top
-	pista.TextColor3 = GRIS_TENUE
-	pista.Text = "Al activarlo apunta solo, sin pulsar nada."
-	pista.Parent = tarjetaAimbot
 
 	-- Círculo del aimbot: vive en el ScreenGui (no dentro del panel), así
 	-- sigue visible aunque cierres el panel con H.
@@ -1399,18 +1564,12 @@ do
 
 	circuloAim.Parent = gui
 
-	local function estiloBoton(boton, activo, texto)
-		boton.Text = texto
-		boton.BackgroundColor3 = activo and VERDE_HEADER or BLANCO
-		boton.TextColor3 = activo and BLANCO or GRIS_TEXTO
-	end
-
 	local function actualizarBotonesAim()
-		estiloBoton(botonAimbot, aimbotActivo, aimbotActivo and "AIMBOT:  ACTIVADO" or "AIMBOT:  DESACTIVADO")
-		estiloBoton(botonWallCheck, wallCheck, wallCheck and "WALL CHECK: SÍ" or "WALL CHECK: NO")
-		estiloBoton(botonTeamCheck, teamCheck, teamCheck and "TEAM CHECK: SÍ" or "TEAM CHECK: NO")
+		pintarBoton(botonAimbot, aimbotActivo, aimbotActivo and "ACTIVADO" or "DESACTIVADO")
+		pintarBoton(botonWallCheck, wallCheck, wallCheck and "WALL CHECK: SÍ" or "WALL CHECK: NO")
+		pintarBoton(botonTeamCheck, teamCheck, teamCheck and "TEAM CHECK: SÍ" or "TEAM CHECK: NO")
 		for nombre, boton in pairs(botonesParte) do
-			estiloBoton(boton, nombre == parteAim, nombre)
+			pintarBoton(boton, nombre == parteAim, nombre)
 		end
 		circuloAim.Visible = aimbotActivo
 	end
@@ -1544,41 +1703,20 @@ do
 	local esp = {}               -- [Player] = { resaltado, cartel, etiqueta }
 	local creando = {}           -- [Player] = true mientras se está creando su ESP
 
-	-- ===== Interfaz: tarjeta debajo del aimbot (tercera columna) =====
-	local tarjetaEsp = crearTarjeta("ESP", 560, 306, 92)
+	-- ===== Interfaz: tarjeta en la pestaña VISUAL =====
+	local tarjetaEsp = crearTarjeta(paginas.VISUAL, "ESP", "Ve a los jugadores a través de las paredes", 0, 88)
 
-	local function crearBotonEsp(nombre, texto, ancho, x, y, alto, tamanoTexto)
-		local b = Instance.new("TextButton")
-		b.Name = nombre
-		b.Size = UDim2.new(0, ancho, 0, alto)
-		b.Position = UDim2.new(0, x, 0, y)
-		b.BackgroundColor3 = BLANCO
-		b.BorderSizePixel = 2
-		b.BorderColor3 = NEGRO_BORDE
-		b.AutoButtonColor = false
-		b.Selectable = false
-		b.Font = FUENTE
-		b.TextSize = tamanoTexto
-		b.TextColor3 = GRIS_TEXTO
-		b.Text = texto
-		b.Parent = tarjetaEsp
-		return b
-	end
-
-	local botonEsp = crearBotonEsp("BotonEsp", "ESP:  DESACTIVADO", 249, 8, 26, 26, 14)
-	local botonEspTodos = crearBotonEsp("BotonEspTodos", "TODOS", 121, 8, 58, 24, 13)
-	local botonEspEquipo = crearBotonEsp("BotonEspOtroTeam", "OTRO TEAM", 121, 136, 58, 24, 13)
-
-	local function estiloBoton(boton, activo, texto)
-		boton.Text = texto
-		boton.BackgroundColor3 = activo and VERDE_HEADER or BLANCO
-		boton.TextColor3 = activo and BLANCO or GRIS_TEXTO
-	end
+	local botonEsp = crearBoton(tarjetaEsp, "BotonEsp", "DESACTIVADO",
+		UDim2.new(0, 8, 0, 34), tamCompleto(22), 13)
+	local botonEspTodos = crearBoton(tarjetaEsp, "BotonEspTodos", "TODOS",
+		mitadIzq(60), tamMitad(22), 12)
+	local botonEspEquipo = crearBoton(tarjetaEsp, "BotonEspOtroTeam", "OTRO TEAM",
+		mitadDer(60), tamMitad(22), 12)
 
 	local function actualizarBotonesEsp()
-		estiloBoton(botonEsp, espActivo, espActivo and "ESP:  ACTIVADO" or "ESP:  DESACTIVADO")
-		estiloBoton(botonEspTodos, modoEsp == "TODOS", "TODOS")
-		estiloBoton(botonEspEquipo, modoEsp == "OTRO TEAM", "OTRO TEAM")
+		pintarBoton(botonEsp, espActivo, espActivo and "ACTIVADO" or "DESACTIVADO")
+		pintarBoton(botonEspTodos, modoEsp == "TODOS", "TODOS")
+		pintarBoton(botonEspEquipo, modoEsp == "OTRO TEAM", "OTRO TEAM")
 	end
 
 	-- ===== Lógica =====
@@ -1766,6 +1904,8 @@ local function prepararPersonaje(character)
 	giroActivo = false
 	actualizarBotonGiro()
 	objetivoFling = nil
+	faseFling = nil
+	camaraSobreObjetivo = false
 	posAntesRafaga = nil
 	picoPendiente = false
 	volabaAntesDeFling = false
@@ -1807,12 +1947,10 @@ end
 establecerVuelo = function(estado)
 	if not root or not humanoid then return end
 
-	-- Si se enciende el vuelo en mitad de un lanzamiento, se corta la ráfaga.
-	if estado and objetivoFling then
-		terminarRafaga()
-		if dirigidoActivo then
-			finalizarFlingDirigido("Cancelado", false)
-		end
+	-- Si se enciende el vuelo en mitad de un lanzamiento, se cancela
+	-- (te devuelve a tu sitio) para que no peleen por tu personaje.
+	if estado and faseFling and cancelarFlingDirigido then
+		cancelarFlingDirigido()
 	end
 
 	volando = estado
@@ -1911,6 +2049,12 @@ local function autodestruir()
 		end
 	end
 
+	-- 0c) Si hay un lanzamiento en curso, se cancela (te devuelve a tu sitio
+	--     y la cámara vuelve a ti) ANTES de cortar las conexiones.
+	if cancelarFlingDirigido then
+		pcall(cancelarFlingDirigido)
+	end
+
 	-- 1) Cortar todas las conexiones
 	for _, c in ipairs(conexiones) do
 		c:Disconnect()
@@ -1929,6 +2073,7 @@ local function autodestruir()
 	dirigidoActivo = false
 	jugadorDirigido = nil
 	objetivoFling = nil
+	faseFling = nil
 	posAntesRafaga = nil
 	picoPendiente = false
 
